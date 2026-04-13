@@ -2,7 +2,7 @@
 
 A terminal UI for managing your local HuggingFace model cache — browse, inspect, delete, and download models/datasets/spaces without leaving the terminal.
 
-![HuggingFace TUI screenshot](https://raw.githubusercontent.com/aleksdj/huggingface-tui/master/screenshot.png)
+![HuggingFace TUI screenshot](screenshot.png)
 
 ## Features
 
