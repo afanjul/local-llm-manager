@@ -8,9 +8,7 @@
   "scripts": {
     "start": "bun run src/index.tsx",
     "dev": "bun --watch src/index.tsx",
-    "build:arm64": "bun build --compile --target=bun-darwin-arm64 ./src/index.tsx --outfile local-llm-manager-arm64 && codesign --sign - --force --entitlements entitlements.plist local-llm-manager-arm64",
-    "build:x64": "bun build --compile --target=bun-darwin-x64 ./src/index.tsx --outfile local-llm-manager-x64 && codesign --sign - --force --entitlements entitlements.plist local-llm-manager-x64",
-    "build": "bun run build:arm64 && bun run build:x64"
+    "build": "bun build --compile --target=bun-darwin-arm64 ./src/index.tsx --outfile local-llm-manager && codesign --sign - --force --entitlements entitlements.plist local-llm-manager"
   },
   "dependencies": {
     "ink": "^5.2.1",

@@ -36,14 +36,7 @@ brew install ldid
 ```
 
 ```bash
-# Apple Silicon (ARM64)
-bun run build:arm64    # → ./local-llm-manager-arm64
-
-# Intel (x86_64)
-bun run build:x64      # → ./local-llm-manager-x64
-
-# Both
-bun run build
+bun run build    # → ./local-llm-manager
 ```
 
 The binaries are self-contained — no Bun or Node.js required to run them.
