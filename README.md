@@ -1,8 +1,8 @@
-# HuggingFace TUI
+# Local LLM Manager
 
 A terminal UI for managing your local HuggingFace model cache — browse, inspect, delete, and download models/datasets/spaces without leaving the terminal.
 
-![HuggingFace TUI screenshot](screenshot.png)
+![Local LLM Manager screenshot](screenshot.png)
 
 ## Features
 
@@ -21,8 +21,8 @@ A terminal UI for managing your local HuggingFace model cache — browse, inspec
 ## Install & Run
 
 ```bash
-git clone https://github.com/aleksdj/huggingface-tui
-cd huggingface-tui
+git clone https://github.com/afanjul/local-llm-manager
+cd local-llm-manager
 bun install
 bun start
 ```
@@ -37,10 +37,10 @@ brew install ldid
 
 ```bash
 # Apple Silicon (ARM64)
-bun run build:arm64    # → ./hf-tui-arm64
+bun run build:arm64    # → ./local-llm-manager-arm64
 
 # Intel (x86_64)
-bun run build:x64      # → ./hf-tui-x64
+bun run build:x64      # → ./local-llm-manager-x64
 
 # Both
 bun run build

@@ -1,15 +1,15 @@
 {
-  "name": "huggingface-tui",
+  "name": "local-llm-manager",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "hf-tui": "./src/index.tsx"
+    "local-llm-manager": "./src/index.tsx"
   },
   "scripts": {
     "start": "bun run src/index.tsx",
     "dev": "bun --watch src/index.tsx",
-    "build:arm64": "bun build --compile --target=bun-darwin-arm64 ./src/index.tsx --outfile hf-tui-arm64 && codesign --sign - --force --entitlements entitlements.plist hf-tui-arm64",
-    "build:x64": "bun build --compile --target=bun-darwin-x64 ./src/index.tsx --outfile hf-tui-x64 && codesign --sign - --force --entitlements entitlements.plist hf-tui-x64",
+    "build:arm64": "bun build --compile --target=bun-darwin-arm64 ./src/index.tsx --outfile local-llm-manager-arm64 && codesign --sign - --force --entitlements entitlements.plist local-llm-manager-arm64",
+    "build:x64": "bun build --compile --target=bun-darwin-x64 ./src/index.tsx --outfile local-llm-manager-x64 && codesign --sign - --force --entitlements entitlements.plist local-llm-manager-x64",
     "build": "bun run build:arm64 && bun run build:x64"
   },
   "dependencies": {
