@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Box, Text, useInput, useApp, useStdout } from 'ink';
 
-import { scanCache, deleteRepo, deleteRevision, downloadModel } from './cache.js';
-import type { CacheStats, CachedRepo, FilterType, SortBy, ViewMode, DeleteTarget } from './types.js';
+import { scanAll, deleteArtifact } from './scanner.js';
+import { downloadModel } from './cache.js';
+import type {
+  AppStats,
+  StoredArtifact,
+  FilterType,
+  ProviderFilter,
+  Provider,
+  SortBy,
+  ViewMode,
+  DeleteTarget,
+} from './types.js';
 
 import Header from './components/Header.js';
 import FilterBar from './components/FilterBar.js';
@@ -15,9 +25,24 @@ import StatusBar from './components/StatusBar.js';
 type DownloadRepoType = 'model' | 'dataset' | 'space';
 const DOWNLOAD_TYPES: DownloadRepoType[] = ['model', 'dataset', 'space'];
 
+const PROVIDER_CYCLE: ProviderFilter[] = [
+  'all',
+  'huggingface-hub',
+  'huggingface-datasets',
+  'huggingface-assets',
+  'ollama',
+  'lmstudio',
+  'llamacpp',
+  'gpt4all',
+  'jan',
+  'omlx',
+];
+
+const TYPE_CYCLE: FilterType[] = ['all', 'model', 'dataset', 'space', 'asset'];
+
 // Fixed UI chrome heights
 const HEADER_H = 2;   // title + divider
-const FILTER_H = 2;   // filter row + divider
+const FILTER_H = 3;   // type row + provider row + divider
 const STATUS_H = 2;   // divider + keybindings
 
 export default function App() {
@@ -28,7 +53,7 @@ export default function App() {
   const termHeight = stdout?.rows ?? process.stdout.rows ?? 24;
 
   // ─── State ──────────────────────────────────────────────────────────────────
-  const [stats, setStats] = useState<CacheStats | null>(null);
+  const [stats, setStats] = useState<AppStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState<ViewMode>('list');
 
@@ -38,6 +63,7 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>('size');
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [filterProvider, setFilterProvider] = useState<ProviderFilter>('all');
 
   // Detail state
   const [selectedRevisionIndex, setSelectedRevisionIndex] = useState(0);
@@ -56,9 +82,8 @@ export default function App() {
   // ─── Load cache ─────────────────────────────────────────────────────────────
   const refreshCache = useCallback(() => {
     setIsLoading(true);
-    // Run in next tick so UI can render "scanning..." first
     setTimeout(() => {
-      const data = scanCache();
+      const data = scanAll();
       setStats(data);
       setIsLoading(false);
     }, 10);
@@ -68,50 +93,53 @@ export default function App() {
     refreshCache();
   }, []);
 
-  // ─── Derived: filtered + sorted repos ────────────────────────────────────────
-  const filteredRepos = useMemo((): CachedRepo[] => {
+  // ─── Derived: filtered + sorted artifacts ────────────────────────────────────
+  const filteredArtifacts = useMemo((): StoredArtifact[] => {
     if (!stats) return [];
-    let repos = [...stats.repos];
+    let items = [...stats.artifacts];
+
+    if (filterProvider !== 'all') {
+      items = items.filter((a) => a.provider === filterProvider);
+    }
 
     if (filterType !== 'all') {
-      repos = repos.filter((r) => r.repoType === filterType);
+      items = items.filter((a) => a.resourceType === filterType);
     }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      repos = repos.filter((r) => r.repoId.toLowerCase().includes(q));
+      items = items.filter((a) => a.logicalName.toLowerCase().includes(q));
     }
 
     switch (sortBy) {
-      case 'size':     repos.sort((a, b) => b.size - a.size); break;
-      case 'name':     repos.sort((a, b) => a.repoId.localeCompare(b.repoId)); break;
-      case 'accessed': repos.sort((a, b) => b.lastAccessed.getTime() - a.lastAccessed.getTime()); break;
-      case 'modified': repos.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime()); break;
+      case 'size':     items.sort((a, b) => b.sizeBytes - a.sizeBytes); break;
+      case 'name':     items.sort((a, b) => a.logicalName.localeCompare(b.logicalName)); break;
+      case 'accessed': items.sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime()); break;
+      case 'modified': items.sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime()); break;
     }
 
-    return repos;
-  }, [stats, filterType, searchQuery, sortBy]);
+    return items;
+  }, [stats, filterProvider, filterType, searchQuery, sortBy]);
 
-  const selectedRepo = filteredRepos[selectedIndex] ?? null;
+  const selectedArtifact = filteredArtifacts[selectedIndex] ?? null;
 
   // ─── Scroll logic ────────────────────────────────────────────────────────────
   const listAreaH = termHeight - HEADER_H - FILTER_H - STATUS_H;
   const scrollOffset = Math.max(
     0,
-    Math.min(selectedIndex - Math.floor(listAreaH / 2), filteredRepos.length - listAreaH),
+    Math.min(selectedIndex - Math.floor(listAreaH / 2), filteredArtifacts.length - listAreaH),
   );
 
   const detailAreaH = termHeight - HEADER_H - STATUS_H;
-  const revListH = Math.min(
-    selectedRepo?.revisions.length ?? 0,
-    Math.floor(detailAreaH * 0.35),
-  );
+  const revListH = selectedArtifact?.cachedRepo
+    ? Math.min(selectedArtifact.cachedRepo.revisions.length, Math.floor(detailAreaH * 0.35))
+    : 0;
   const fileAreaH = Math.max(4, detailAreaH - 6 - revListH);
 
   // Clamp selected index when list changes
   useEffect(() => {
-    setSelectedIndex((i) => Math.max(0, Math.min(i, filteredRepos.length - 1)));
-  }, [filteredRepos.length]);
+    setSelectedIndex((i) => Math.max(0, Math.min(i, filteredArtifacts.length - 1)));
+  }, [filteredArtifacts.length]);
 
   // Reset file scroll when revision changes
   useEffect(() => {
@@ -138,11 +166,7 @@ export default function App() {
     // ── Delete confirm ────────────────────────────────────────────────────────
     if (view === 'delete-confirm') {
       if ((input === 'y' || key.return) && deleteTarget) {
-        if (deleteTarget.revision) {
-          deleteRevision(deleteTarget.repo.path, deleteTarget.revision.commitHash);
-        } else {
-          deleteRepo(deleteTarget.repo.path);
-        }
+        deleteArtifact(deleteTarget.artifact, deleteTarget.revision);
         setDeleteTarget(null);
         setView('list');
         setSelectedIndex(0);
@@ -162,10 +186,15 @@ export default function App() {
         setView('list');
         setDownloadQuery('');
         setDownloadOutput('');
-      } else if (key.tab) {
+      } else if (key.rightArrow) {
         setDownloadRepoType((t) => {
           const idx = DOWNLOAD_TYPES.indexOf(t);
           return DOWNLOAD_TYPES[(idx + 1) % DOWNLOAD_TYPES.length];
+        });
+      } else if (key.leftArrow) {
+        setDownloadRepoType((t) => {
+          const idx = DOWNLOAD_TYPES.indexOf(t);
+          return DOWNLOAD_TYPES[(idx - 1 + DOWNLOAD_TYPES.length) % DOWNLOAD_TYPES.length];
         });
       } else if (key.return && downloadQuery.trim()) {
         setIsDownloading(true);
@@ -187,8 +216,8 @@ export default function App() {
     }
 
     // ── Detail view ───────────────────────────────────────────────────────────
-    if (view === 'detail' && selectedRepo) {
-      const repo = selectedRepo;
+    if (view === 'detail' && selectedArtifact) {
+      const artifact = selectedArtifact;
 
       if (key.escape || input === 'q') {
         setView('list');
@@ -198,38 +227,45 @@ export default function App() {
         return;
       }
 
-      if (input === 'f') {
-        // Toggle file scroll mode
-        setFileScrollMode((m) => !m);
-        return;
-      }
-
-      if (fileScrollMode) {
-        // Scroll files
-        if (key.upArrow || input === 'k') {
-          setFileScrollOffset((o) => Math.max(0, o - 1));
-        } else if (key.downArrow || input === 'j') {
-          const rev = repo.revisions[selectedRevisionIndex];
-          const max = rev ? Math.max(0, rev.files.length - fileAreaH) : 0;
-          setFileScrollOffset((o) => Math.min(max, o + 1));
+      // File scroll mode only applies to HF Hub (cachedRepo present)
+      if (artifact.cachedRepo) {
+        if (input === 'f') {
+          setFileScrollMode((m) => !m);
+          return;
         }
-        return;
-      }
 
-      // Navigate revisions
-      if (key.upArrow || input === 'k') {
-        setSelectedRevisionIndex((i) => Math.max(0, i - 1));
-      } else if (key.downArrow || input === 'j') {
-        setSelectedRevisionIndex((i) => Math.min(repo.revisions.length - 1, i + 1));
-      } else if (input === 'd' && repo.revisions.length > 0) {
-        const revision = repo.revisions[selectedRevisionIndex];
-        if (revision) {
-          setDeleteTarget({ repo, revision });
+        if (fileScrollMode) {
+          if (key.upArrow || input === 'k') {
+            setFileScrollOffset((o) => Math.max(0, o - 1));
+          } else if (key.downArrow || input === 'j') {
+            const rev = artifact.cachedRepo!.revisions[selectedRevisionIndex];
+            const max = rev ? Math.max(0, rev.files.length - fileAreaH) : 0;
+            setFileScrollOffset((o) => Math.min(max, o + 1));
+          }
+          return;
+        }
+
+        // Navigate revisions
+        if (key.upArrow || input === 'k') {
+          setSelectedRevisionIndex((i) => Math.max(0, i - 1));
+        } else if (key.downArrow || input === 'j') {
+          setSelectedRevisionIndex((i) => Math.min(artifact.cachedRepo!.revisions.length - 1, i + 1));
+        } else if (input === 'd' && artifact.cachedRepo.revisions.length > 0) {
+          const revision = artifact.cachedRepo.revisions[selectedRevisionIndex];
+          if (revision) {
+            setDeleteTarget({ artifact, revision });
+            setView('delete-confirm');
+          }
+        } else if (input === 'D') {
+          setDeleteTarget({ artifact });
           setView('delete-confirm');
         }
-      } else if (input === 'D') {
-        setDeleteTarget({ repo });
-        setView('delete-confirm');
+      } else {
+        // Simple artifact: only whole-artifact delete
+        if (input === 'd' || input === 'D') {
+          setDeleteTarget({ artifact });
+          setView('delete-confirm');
+        }
       }
       return;
     }
@@ -240,12 +276,12 @@ export default function App() {
     } else if (key.upArrow || input === 'k') {
       setSelectedIndex((i) => Math.max(0, i - 1));
     } else if (key.downArrow || input === 'j') {
-      setSelectedIndex((i) => Math.min(filteredRepos.length - 1, i + 1));
+      setSelectedIndex((i) => Math.min(filteredArtifacts.length - 1, i + 1));
     } else if (key.pageUp) {
       setSelectedIndex((i) => Math.max(0, i - listAreaH));
     } else if (key.pageDown) {
-      setSelectedIndex((i) => Math.min(filteredRepos.length - 1, i + listAreaH));
-    } else if (key.return && selectedRepo) {
+      setSelectedIndex((i) => Math.min(filteredArtifacts.length - 1, i + listAreaH));
+    } else if (key.return && selectedArtifact) {
       setView('detail');
       setSelectedRevisionIndex(0);
       setFileScrollOffset(0);
@@ -254,8 +290,9 @@ export default function App() {
     } else if (key.escape) {
       setSearchQuery('');
       setFilterType('all');
-    } else if (input === 'd' && selectedRepo) {
-      setDeleteTarget({ repo: selectedRepo });
+      setFilterProvider('all');
+    } else if (input === 'd' && selectedArtifact) {
+      setDeleteTarget({ artifact: selectedArtifact });
       setView('delete-confirm');
     } else if (input === 'n') {
       setView('download');
@@ -267,17 +304,27 @@ export default function App() {
     } else if (input === 'r') {
       setSelectedIndex(0);
       refreshCache();
-    } else if (input === '1') {
-      setFilterType('all');
+    } else if (key.tab) {
+      const forward = !key.shift;
+      setFilterProvider((current) => {
+        const idx = PROVIDER_CYCLE.indexOf(current);
+        const next = forward
+          ? (idx + 1) % PROVIDER_CYCLE.length
+          : (idx - 1 + PROVIDER_CYCLE.length) % PROVIDER_CYCLE.length;
+        return PROVIDER_CYCLE[next];
+      });
       setSelectedIndex(0);
-    } else if (input === '2') {
-      setFilterType('model');
+    } else if (key.leftArrow) {
+      setFilterType((current) => {
+        const idx = TYPE_CYCLE.indexOf(current);
+        return TYPE_CYCLE[(idx - 1 + TYPE_CYCLE.length) % TYPE_CYCLE.length];
+      });
       setSelectedIndex(0);
-    } else if (input === '3') {
-      setFilterType('dataset');
-      setSelectedIndex(0);
-    } else if (input === '4') {
-      setFilterType('space');
+    } else if (key.rightArrow) {
+      setFilterType((current) => {
+        const idx = TYPE_CYCLE.indexOf(current);
+        return TYPE_CYCLE[(idx + 1) % TYPE_CYCLE.length];
+      });
       setSelectedIndex(0);
     }
   });
@@ -291,6 +338,7 @@ export default function App() {
         <Header stats={stats} isLoading={isLoading} width={w} />
         <FilterBar
           filterType={filterType}
+          filterProvider={filterProvider}
           sortBy={sortBy}
           searchQuery={searchQuery}
           isSearching={isSearching}
@@ -304,7 +352,7 @@ export default function App() {
         ) : (
           <Box height={listAreaH}>
             <RepoList
-              repos={filteredRepos}
+              artifacts={filteredArtifacts}
               selectedIndex={selectedIndex}
               scrollOffset={scrollOffset}
               visibleCount={listAreaH}
@@ -323,13 +371,13 @@ export default function App() {
     );
   }
 
-  if (view === 'detail' && selectedRepo) {
+  if (view === 'detail' && selectedArtifact) {
     return (
       <Box flexDirection="column" width={w}>
         <Header stats={stats} isLoading={isLoading} width={w} />
         <Box height={detailAreaH}>
           <DetailView
-            repo={selectedRepo}
+            artifact={selectedArtifact}
             selectedRevisionIndex={selectedRevisionIndex}
             fileScrollOffset={fileScrollOffset}
             visibleFileCount={fileAreaH}
@@ -344,23 +392,20 @@ export default function App() {
 
   if (view === 'download') {
     return (
-      <Box flexDirection="column" width={w}>
-        <Header stats={stats} isLoading={isLoading} width={w} />
-        <Box flexGrow={1}>
-          <DownloadPanel
-            query={downloadQuery}
-            repoType={downloadRepoType}
-            isDownloading={isDownloading}
-            output={downloadOutput}
-            width={w}
-          />
-        </Box>
-        <StatusBar view="download" isSearching={false} isDownloading={isDownloading} width={w} />
+      <Box flexDirection="column" width={w} height={termHeight}>
+        <DownloadPanel
+          query={downloadQuery}
+          repoType={downloadRepoType}
+          isDownloading={isDownloading}
+          output={downloadOutput}
+          width={w}
+          height={termHeight}
+        />
       </Box>
     );
   }
 
-  // Fallback (shouldn't happen)
+  // Fallback
   return (
     <Box>
       <Text dimColor>Loading…</Text>

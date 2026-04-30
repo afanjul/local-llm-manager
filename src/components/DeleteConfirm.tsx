@@ -9,17 +9,21 @@ interface Props {
 }
 
 export default function DeleteConfirm({ target, width }: Props) {
-  const { repo, revision } = target;
+  const { artifact, revision } = target;
 
   const isRevision = !!revision;
   const label = isRevision
-    ? `revision ${revision!.shortHash}${revision!.refs.length > 0 ? ` (${revision!.refs[0]})` : ''} of ${repo.repoId}`
-    : repo.repoId;
+    ? `revision ${revision!.shortHash}${revision!.refs.length > 0 ? ` (${revision!.refs[0]})` : ''} of ${artifact.logicalName}`
+    : artifact.logicalName;
 
-  const size = isRevision ? revision!.size : repo.size;
-  const warning = !isRevision && repo.revisions.length > 1
-    ? `  This will delete all ${repo.revisions.length} revisions.`
-    : '';
+  const size = isRevision ? revision!.size : artifact.sizeBytes;
+
+  const warning =
+    artifact.provider === 'jan'
+      ? "  Jan's data folder contains more than models — only the models/ subdirectory will be affected."
+      : !isRevision && artifact.cachedRepo && artifact.cachedRepo.revisions.length > 1
+      ? `  This will delete all ${artifact.cachedRepo.revisions.length} revisions.`
+      : '';
 
   const lineW = Math.min(width - 4, 60);
   const pad = Math.floor((width - lineW) / 2);

@@ -21,7 +21,8 @@ const BINDINGS: Record<string, Binding[]> = {
     { key: 'd', desc: 'delete' },
     { key: 'n', desc: 'download' },
     { key: '/', desc: 'search' },
-    { key: '1-4', desc: 'filter' },
+    { key: '←→', desc: 'type filter' },
+    { key: 'tab/⇧tab', desc: 'provider' },
     { key: 's', desc: 'sort' },
     { key: 'r', desc: 'refresh' },
     { key: 'q', desc: 'quit' },
@@ -44,7 +45,7 @@ const BINDINGS: Record<string, Binding[]> = {
   ],
   download: [
     { key: 'type', desc: 'enter model id' },
-    { key: 'tab', desc: 'switch type' },
+    { key: '←→', desc: 'switch type' },
     { key: 'enter', desc: 'download' },
     { key: 'esc', desc: 'cancel' },
   ],

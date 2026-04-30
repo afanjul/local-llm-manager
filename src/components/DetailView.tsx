@@ -1,10 +1,10 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { formatSize, formatDate, formatFullDate, truncate } from '../utils.js';
-import type { CachedRepo } from '../types.js';
+import type { StoredArtifact, CachedRepo, ResourceType, Provider } from '../types.js';
 
 interface Props {
-  repo: CachedRepo;
+  artifact: StoredArtifact;
   selectedRevisionIndex: number;
   fileScrollOffset: number;
   visibleFileCount: number;
@@ -12,25 +12,46 @@ interface Props {
   height: number;
 }
 
-const TYPE_COLOR: Record<string, string> = {
-  model: 'cyan',
-  dataset: 'green',
-  space: 'yellow',
+const TYPE_COLOR: Record<ResourceType, string> = {
+  model:               'cyan',
+  dataset:             'green',
+  space:               'yellow',
+  asset:               'magenta',
+  unknown:             'white',
+  'incomplete-download': 'red',
 };
 
-export default function DetailView({
+const PROVIDER_LABEL: Record<Provider, string> = {
+  'huggingface-hub':      'HF Hub',
+  'huggingface-datasets': 'HF Datasets',
+  'huggingface-assets':   'HF Assets',
+  'ollama':               'Ollama',
+  'lmstudio':             'LM Studio',
+  'llamacpp':             'llama.cpp',
+  'gpt4all':              'GPT4All',
+  'jan':                  'Jan',
+  'omlx':                 'OMLX',
+};
+
+function HfHubDetail({
   repo,
+  artifact,
   selectedRevisionIndex,
   fileScrollOffset,
   visibleFileCount,
   width,
   height,
-}: Props) {
+}: {
+  repo: CachedRepo;
+  artifact: StoredArtifact;
+  selectedRevisionIndex: number;
+  fileScrollOffset: number;
+  visibleFileCount: number;
+  width: number;
+  height: number;
+}) {
   const selectedRev = repo.revisions[selectedRevisionIndex];
-
-  // Layout: 2 lines header + 1 divider + revisions list + 1 divider + files header + file list
   const revListHeight = Math.min(repo.revisions.length, Math.floor(height * 0.35));
-  const filesAvailable = height - 3 - revListHeight - 3; // rough estimate
   const visibleFiles = selectedRev
     ? selectedRev.files.slice(fileScrollOffset, fileScrollOffset + visibleFileCount)
     : [];
@@ -40,8 +61,8 @@ export default function DetailView({
       {/* Repo header */}
       <Box>
         <Text dimColor>{'← '}</Text>
-        <Text bold color={TYPE_COLOR[repo.repoType]}>
-          {repo.repoType.toUpperCase()}
+        <Text bold color={TYPE_COLOR[artifact.resourceType]}>
+          {artifact.resourceType.toUpperCase()}
         </Text>
         <Text bold>{`  ${repo.repoId}`}</Text>
       </Box>
@@ -49,6 +70,9 @@ export default function DetailView({
         <Text dimColor>
           {`  ${repo.revisions.length} revision${repo.revisions.length !== 1 ? 's' : ''}  ·  ${formatSize(repo.size)}  ·  ${repo.nbFiles} files  ·  modified ${formatDate(repo.lastModified)}`}
         </Text>
+      </Box>
+      <Box>
+        <Text dimColor>{`  ${artifact.localPath}`}</Text>
       </Box>
       <Text dimColor>{'─'.repeat(width)}</Text>
 
@@ -110,4 +134,130 @@ export default function DetailView({
       )}
     </Box>
   );
+}
+
+function IncompleteDetail({
+  artifact,
+  width,
+}: {
+  artifact: StoredArtifact;
+  width: number;
+}) {
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text dimColor>{'← '}</Text>
+        <Text bold color="red">INCOMPLETE DOWNLOAD</Text>
+        <Text bold>{`  ${artifact.logicalName}`}</Text>
+      </Box>
+      <Box>
+        <Text dimColor>  HF Hub  ·  0 B  ·  download was interrupted before any files were saved</Text>
+      </Box>
+      <Box>
+        <Text dimColor>{`  ${artifact.localPath}`}</Text>
+      </Box>
+      <Text dimColor>{'─'.repeat(width)}</Text>
+      <Box flexDirection="column" paddingTop={1}>
+        <Box>
+          <Text color="red">  This entry cannot be used.</Text>
+        </Box>
+        <Box>
+          <Text dimColor>  The download started but no model files were ever written to disk.</Text>
+        </Box>
+        <Box>
+          <Text dimColor>  Press </Text>
+          <Text bold color="red">[d]</Text>
+          <Text dimColor> to delete the leftover metadata, or re-download the model to restore it.</Text>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+function SimpleDetail({
+  artifact,
+  width,
+}: {
+  artifact: StoredArtifact;
+  width: number;
+}) {
+  const providerLabel = PROVIDER_LABEL[artifact.provider];
+
+  return (
+    <Box flexDirection="column">
+      {/* Header */}
+      <Box>
+        <Text dimColor>{'← '}</Text>
+        <Text bold color={TYPE_COLOR[artifact.resourceType]}>
+          {artifact.resourceType.toUpperCase()}
+        </Text>
+        <Text bold>{`  ${artifact.logicalName}`}</Text>
+      </Box>
+      <Box>
+        <Text dimColor>
+          {`  ${providerLabel}  ·  ${formatSize(artifact.sizeBytes)}  ·  last seen ${formatDate(artifact.lastSeenAt)}`}
+        </Text>
+      </Box>
+      <Text dimColor>{'─'.repeat(width)}</Text>
+
+      {/* Details */}
+      <Box flexDirection="column" paddingTop={1}>
+        <Box>
+          <Text dimColor>  Path      </Text>
+          <Text wrap="truncate">{artifact.localPath}</Text>
+        </Box>
+        <Box>
+          <Text dimColor>  Size      </Text>
+          <Text>{formatSize(artifact.sizeBytes)}</Text>
+        </Box>
+        <Box>
+          <Text dimColor>  Provider  </Text>
+          <Text>{providerLabel}</Text>
+        </Box>
+        <Box>
+          <Text dimColor>  Type      </Text>
+          <Text>{artifact.resourceType}</Text>
+        </Box>
+        <Box>
+          <Text dimColor>  Strategy  </Text>
+          <Text dimColor>{artifact.deleteStrategy}</Text>
+        </Box>
+        {artifact.repoId && (
+          <Box>
+            <Text dimColor>  Source    </Text>
+            <Text dimColor>{artifact.repoId}</Text>
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+export default function DetailView({
+  artifact,
+  selectedRevisionIndex,
+  fileScrollOffset,
+  visibleFileCount,
+  width,
+  height,
+}: Props) {
+  if (artifact.resourceType === 'incomplete-download') {
+    return <IncompleteDetail artifact={artifact} width={width} />;
+  }
+
+  if (artifact.cachedRepo) {
+    return (
+      <HfHubDetail
+        repo={artifact.cachedRepo}
+        artifact={artifact}
+        selectedRevisionIndex={selectedRevisionIndex}
+        fileScrollOffset={fileScrollOffset}
+        visibleFileCount={visibleFileCount}
+        width={width}
+        height={height}
+      />
+    );
+  }
+
+  return <SimpleDetail artifact={artifact} width={width} />;
 }

@@ -1,4 +1,2 @@
 node_modules/
-hf-tui-arm64
-hf-tui-x64
-hf-tui
+local-llm-manager
